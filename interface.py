@@ -54,13 +54,14 @@ st.sidebar.subheader("🔬 Processamento")
 processing_method = st.sidebar.selectbox(
     "Escolha o Método",
     # Adiciona modo de depuração
-    ("Watershed Automático", "Watershed Manual Interativo", "Debug Coordenadas", "Modelo de IA (em breve)"),
+    ("Watershed Automático", "Watershed Manual Interativo", "Modelo de IA (em breve)"),
     key="processing_selector"
 )
 # Mostra o slider de área mínima apenas para os métodos Watershed
 min_area = 180 # Default value
 if "Watershed" in processing_method:
     min_area = st.sidebar.slider("Área Mínima (px²)", 50, 5000, 180, 10, key="ws_min_area")
+    blur_kernel_size = st.sidebar.slider("Suavização Gaussiana (Kernel)", 1, 21, 5, 2, key="ws_blur_ksize", help="Controla a intensidade do blur antes do watershed. Aumente se a inundação parar cedo.")
 
 st.sidebar.markdown("---")
 
@@ -91,78 +92,12 @@ with tab_process:
 
 
         # --- Lógica movida para fora dos ifs específicos de método ---
-        CANVAS_HEIGHT = 600 # Altura fixa do canvas
+        CANVAS_HEIGHT = 400 # Altura fixa do canvas
         # Calcula a largura proporcional do canvas para manter o aspect ratio da imagem
         aspect_ratio = img_width / img_height if img_height != 0 else 1
         canvas_width = int(aspect_ratio * CANVAS_HEIGHT)
 
-        # --- NOVO MODO DE DEPURAÇÃO ---
-        if processing_method == "Debug Coordenadas":
-            st.subheader("Modo: Depuração de Coordenadas")
-            st.info("Clique em pontos identificáveis na imagem. As coordenadas do Canvas e as calculadas para a imagem original serão exibidas abaixo.")
-
-            canvas_result = st_canvas(
-                fill_color="rgba(0, 255, 0, 0.3)", # Cor verde para depuração
-                stroke_width=3,
-                stroke_color="#00FF00",
-                background_image=pil_image, # Passa imagem PIL
-                update_streamlit=True,      # ATUALIZA A CADA CLIQUE
-                height=CANVAS_HEIGHT,
-                width=canvas_width,        # Usa largura calculada
-                drawing_mode="point",
-                key="debug_canvas"
-            )
-
-            # Mostra os dados crus do canvas sempre que atualiza
-            if canvas_result is not None and canvas_result.json_data is not None and "objects" in canvas_result.json_data and canvas_result.json_data["objects"]:
-                st.write("--- Dados do Canvas (Tempo Real) ---")
-                st.json(canvas_result.json_data["objects"][-1]) # Mostra apenas o último ponto
-
-                try:
-                    markers_df = pd.json_normalize(canvas_result.json_data["objects"])
-                    point_markers_df = markers_df[markers_df['type'] == 'circle'].rename(columns={'left': 'x', 'top': 'y'}).tail(1) # Pega só o último
-
-                    if not point_markers_df.empty:
-                        # --- REESCALONAMENTO COM CORREÇÃO APLICADA (DEBUG) ---
-                        canvas_height_actual = CANVAS_HEIGHT
-                        canvas_width_actual = canvas_width # Usa a largura calculada
-
-                        img_aspect_actual = img_width / img_height if img_height != 0 else 1
-                        canvas_aspect_actual = canvas_width_actual / canvas_height_actual if canvas_height_actual != 0 else 1
-
-                        if img_aspect_actual > canvas_aspect_actual:
-                            scale = canvas_width_actual / img_width if img_width != 0 else 0
-                            offset_x = 0
-                            offset_y = (canvas_height_actual - (img_height * scale)) / 2 if scale != 0 else 0
-                        else:
-                            scale = canvas_height_actual / img_height if img_height != 0 else 0
-                            offset_x = (canvas_width_actual - (img_width * scale)) / 2 if scale != 0 else 0
-                            offset_y = 0
-
-                        # Define o fator de correção
-                        x_correction_pixels = 5
-
-                        # Calcula as coordenadas originais estimadas com correção
-                        if scale != 0: # Evita divisão por zero
-                            point_markers_df['original_x'] = (((point_markers_df['x'] - offset_x) / scale) + x_correction_pixels).astype(int) # Correção aplicada
-                            point_markers_df['original_y'] = ((point_markers_df['y'] - offset_y) / scale).astype(int)
-                        else:
-                            point_markers_df['original_x'] = 0
-                            point_markers_df['original_y'] = 0
-                        # --- FIM DO REESCALONAMENTO ---
-
-                        st.write("--- Comparação de Coordenadas (Último Ponto Corrigido) ---")
-                        st.write(f"Scale: {scale:.4f}, OffsetX: {offset_x:.2f}, OffsetY: {offset_y:.2f}, X_Correction: +{x_correction_pixels}")
-                        st.dataframe(point_markers_df[['x', 'y', 'original_x', 'original_y']])
-
-                except Exception as e:
-                    st.error(f"Erro ao processar coordenadas: {e}")
-            else:
-                st.write("Aguardando clique...")
-
-        # --- FIM DO NOVO MODO ---
-
-        elif processing_method == "Watershed Automático":
+        if processing_method == "Watershed Automático":
             st.subheader("Modo: Watershed Automático")
             # Garante que 'min_area' esteja definido
             current_min_area = min_area if 'min_area' in locals() or 'min_area' in globals() else 180 
@@ -243,8 +178,9 @@ with tab_process:
                                 if not point_markers_df_filtered.empty:
                                      # Garante que 'min_area' esteja definido
                                      current_min_area = min_area if 'min_area' in locals() or 'min_area' in globals() else 180
+                                     current_blur = blur_kernel_size if 'blur_kernel_size' in locals() or 'blur_kernel_size' in globals() else 5
                                      with st.spinner("Processando..."):
-                                         fig_manual, mask_manual = run_manual_watershed(color_image, current_min_area, point_markers_df_filtered)
+                                         fig_manual, mask_manual = run_manual_watershed(color_image, current_min_area, point_markers_df_filtered, current_blur)
                                          st.pyplot(fig_manual)
                                 else:
                                     st.warning("Marcadores fora da imagem após reescalonamento.")

@@ -108,7 +108,7 @@ def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize
     binary_mask = gray_image < otsu_threshold
     # Apply morphological opening (erosion followed by dilation) to remove small noise artifacts
     # (e.g., single pixels or tiny specks) from the binary mask.
-    selem_open = disk(2) # Structuring element (disk shape, radius 2) for opening
+    selem_open = disk(1) # Structuring element (disk shape, radius 2) for opening
     opened_mask = opening(binary_mask, selem_open)
     # Label each connected region in the opened mask with a unique integer.
     labeled_mask_initial = measure.label(opened_mask)

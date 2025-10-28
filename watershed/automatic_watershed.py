@@ -62,7 +62,7 @@ NUM_CUSTOM_COLORS = len(CUSTOM_DISTINCT_COLORS_RGB)
 #
 # !!! --- MODIFICATION 1: Added 'manual_threshold=None' --- !!!
 #
-def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=None):
+def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=None, watershed_method='skimage'):
     """
     Performs automatic seeded watershed segmentation using sure foreground/background markers.
 
@@ -143,7 +143,10 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
     # Execute Higra's seeded watershed using the graph, edge weights (from original gray),
     # and the automatically generated combined markers.
     # print("Executing seeded watershed...") # Verbose
-    final_partition = watershed(gray_image, markers=final_markers, mask=binary_filtered_mask)
+    if(watershed_method == 'skimage'):
+        final_partition = watershed(gray_image, markers=final_markers, mask=binary_filtered_mask)
+    else:
+        final_partition = hg.watershed.labelisation_seeded_watershed(graph, edge_weights, final_markers)
     # Convert result to a standard NumPy array if necessary.
     if hasattr(final_partition, 'to_label_image'):
         output_image_for_display = final_partition.to_label_image(image_size)

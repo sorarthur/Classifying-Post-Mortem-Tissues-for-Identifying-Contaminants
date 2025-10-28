@@ -72,6 +72,8 @@ blur_kernel_size = 5 # Default value
 use_manual_thresh = False
 manual_thresh_val = 0.5 # Um padrão, não importa se 'use_manual_thresh' for Falso
 
+ws_lib = 'skimage' # Default library for watershed
+
 if "Watershed" in processing_method:
     min_area = st.sidebar.slider("Minimum Component Area (px²)", 50, 5000, 180, 10, key="ws_min_area")
     
@@ -96,7 +98,15 @@ if "Watershed" in processing_method:
                 key="ws_manual_thresh_val",
                 help="0.0 = Black, 1.0 = White. Pixels *darker* than this value are kept."
             )
-# !!! --- FIM DA MODIFICAÇÃO 1 --- !!!
+            
+    st.sidebar.markdown("---") # Separador
+    ws_lib = st.sidebar.radio(
+        "Watershed Algorithm",
+        ('skimage', 'higra'),
+        key='ws_lib_select',
+        index=0, # 'skimage' é o padrão
+        help="Escolha o motor do algoritmo. 'skimage' (baseado em gradiente) é rápido. 'higra' (baseado em grafo) pode ser mais preciso para formas complexas."
+    )
 
 
 st.sidebar.markdown("---")
@@ -160,7 +170,8 @@ with tab_process:
                     fig_auto, mask_auto = run_automatic_watershed(
                         color_image, 
                         current_min_area, 
-                        manual_threshold=threshold_to_pass
+                        manual_threshold=threshold_to_pass,
+                        watershed_method=ws_lib
                     )
                     st.pyplot(fig_auto) # Display the resulting matplotlib figure
 
@@ -252,7 +263,11 @@ with tab_process:
                                      current_blur = blur_kernel_size # Get value from sidebar
                                      with st.spinner("Processing..."):
                                          # Call the imported manual watershed function
-                                         fig_manual, mask_manual = run_manual_watershed(color_image, current_min_area, point_markers_df_filtered, current_blur)
+                                         fig_manual, mask_manual = run_manual_watershed(color_image, 
+                                                                                        current_min_area, 
+                                                                                        point_markers_df_filtered, 
+                                                                                        current_blur,
+                                                                                        watershed_method=ws_lib)
                                          st.pyplot(fig_manual) # Display result
                                 else:
                                     st.warning("Markers were outside image bounds after rescaling.")

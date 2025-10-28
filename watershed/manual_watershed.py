@@ -59,7 +59,7 @@ CUSTOM_DISTINCT_COLORS_RGB = [
 ]
 NUM_CUSTOM_COLORS = len(CUSTOM_DISTINCT_COLORS_RGB)
 
-def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize=5):
+def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize=5, watershed_method='skimage'):
     """
     Performs manual seeded watershed segmentation using a divide-and-conquer approach.
 
@@ -219,7 +219,10 @@ def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize
         # Run Higra's watershed algorithm using the graph, edge weights (from blurred image),
         # and the locally generated labeled markers (local_labeled_markers_fg).
         # print("  Executing local watershed...") # Verbose
-        partition_local = watershed(gray_image, markers=local_labeled_markers_fg, mask=current_mask, connectivity=1)
+        if(watershed_method == 'skimage'):
+            partition_local = watershed(gray_image, markers=local_labeled_markers_fg, mask=current_mask, connectivity=1)
+        else:
+            partition_local = hg.watershed.labelisation_seeded_watershed(graph, edge_weights, local_labeled_markers_fg)
         segmentation_local_full = partition_local.to_label_image(image_size) if hasattr(partition_local, 'to_label_image') else partition_local
 
         # --- 5d. Mask Watershed Result ---

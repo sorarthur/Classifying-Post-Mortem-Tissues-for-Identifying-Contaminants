@@ -20,6 +20,10 @@ try:
 except ModuleNotFoundError:
     st.error("Error: Ensure 'automatic_watershed.py' and 'manual_watershed.py' are in the 'watershed' subfolder and it contains an '__init__.py' file.")
     st.stop()
+except ImportError as e:
+    st.error(f"Erro ao importar 'run_automatic_watershed'. A sua função foi atualizada para aceitar 'manual_threshold'? Erro: {e}")
+    st.stop()
+
 
 # Imports utility functions for validation from 'validation_utils.py'
 # Assumes 'validation_utils.py' is in the same folder as this script.
@@ -62,9 +66,38 @@ processing_method = st.sidebar.selectbox(
 # Conditional sliders shown only if a Watershed method is selected.
 min_area = 180 # Default value
 blur_kernel_size = 5 # Default value
+
+# !!! --- MODIFICAÇÃO 1: Adicionar controles de Threshold --- !!!
+# Estas variáveis precisam ser definidas FORA do 'if' para estarem no escopo
+use_manual_thresh = False
+manual_thresh_val = 0.5 # Um padrão, não importa se 'use_manual_thresh' for Falso
+
 if "Watershed" in processing_method:
     min_area = st.sidebar.slider("Minimum Component Area (px²)", 50, 5000, 180, 10, key="ws_min_area")
+    
+    # O Blur só é usado no Manual, mas podemos deixar aqui ou mover para dentro do 'if manual'
     blur_kernel_size = st.sidebar.slider("Gaussian Smoothing (Kernel)", 1, 21, 5, 2, key="ws_blur_ksize", help="Controls blur intensity before watershed. Increase if flooding stops early.")
+
+    # Apenas mostrar controles de threshold para o método Automático
+    if processing_method == "Automatic Watershed":
+        st.sidebar.markdown("---") # Separator
+        st.sidebar.subheader("Thresholding (Auto Watershed)")
+        use_manual_thresh = st.sidebar.checkbox(
+            "Set Manual Threshold", 
+            value=False, 
+            key="ws_use_manual_thresh",
+            help="If unchecked, the automatic (Otsu) threshold will be used."
+        )
+        
+        if use_manual_thresh:
+            manual_thresh_val = st.sidebar.slider(
+                "Manual Threshold Value", 
+                0.0, 1.0, 0.5, 0.01, 
+                key="ws_manual_thresh_val",
+                help="0.0 = Black, 1.0 = White. Pixels *darker* than this value are kept."
+            )
+# !!! --- FIM DA MODIFICAÇÃO 1 --- !!!
+
 
 st.sidebar.markdown("---")
 
@@ -111,9 +144,24 @@ with tab_process:
             st.subheader("Mode: Automatic Watershed")
             current_min_area = min_area # Get value from sidebar slider
             run_auto = st.button("▶️ Run", type="primary", key="run_auto")
+            
             if run_auto:
                 with st.spinner("Processing..."):
-                    fig_auto, mask_auto = run_automatic_watershed(color_image, current_min_area)
+                    
+                    threshold_to_pass = None
+                    if use_manual_thresh:
+                        threshold_to_pass = manual_thresh_val 
+                    
+                    if threshold_to_pass is not None:
+                        st.info(f"Running with MANUAL THRESHOLD: {threshold_to_pass}")
+                    else:
+                        st.info("Running with AUTOMATIC (Otsu) THRESHOLD...")
+                    
+                    fig_auto, mask_auto = run_automatic_watershed(
+                        color_image, 
+                        current_min_area, 
+                        manual_threshold=threshold_to_pass
+                    )
                     st.pyplot(fig_auto) # Display the resulting matplotlib figure
 
         # --- Manual Watershed Execution ---

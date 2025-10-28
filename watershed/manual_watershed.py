@@ -6,6 +6,7 @@ import higra as hg
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches # For color key in plot
+from matplotlib import colormaps
 from skimage import color, measure
 from skimage.filters import threshold_otsu
 from skimage.morphology import opening, disk, dilation, remove_small_objects
@@ -13,6 +14,50 @@ from skimage.segmentation import watershed
 from scipy.ndimage import binary_fill_holes
 from scipy import ndimage as ndi
 import cv2 # For GaussianBlur
+
+CUSTOM_DISTINCT_COLORS_RGB = [
+    (255, 0, 0),     # Red
+    (0, 255, 0),     # Lime
+    (0, 0, 255),     # Blue
+    (255, 255, 0),   # Yellow
+    (0, 255, 255),   # Cyan
+    (255, 0, 255),   # Magenta
+    (255, 128, 0),   # Orange
+    (128, 0, 255),   # Purple
+    (0, 128, 0),     # Green
+    (0, 128, 255),   # Sky Blue
+    (255, 153, 153), # Light Pink
+    (153, 76, 0),    # Brown
+    (160, 160, 160), # Gray
+    (0, 204, 102),   # Tealish Green
+    (255, 204, 0),   # Gold
+    (204, 0, 102),   # Cerise
+    (102, 102, 255), # Light Purple
+    (102, 255, 102), # Light Green
+    (255, 102, 102), # Light Red
+    (178, 102, 255), # Lavender
+    (51, 153, 102),  # Dark Teal
+    (255, 178, 102), # Peach
+    (102, 178, 255), # Cornflower Blue
+    (218, 112, 214), # Orchid
+    (75, 0, 130),    # Indigo
+    (240, 230, 140), # Khaki
+    (0, 128, 128),   # Teal
+    (255, 20, 147),  # Deep Pink
+    (127, 255, 0),   # Chartreuse
+    (255, 215, 0),   # Gold (Slightly different)
+    (139, 0, 0),     # Dark Red
+    (0, 100, 0),     # Dark Green
+    (0, 0, 139),     # Dark Blue
+    (255, 165, 0),   # Orange (Standard)
+    (188, 143, 143), # Rosy Brown
+    (70, 130, 180),  # Steel Blue
+    (255, 250, 205), # Lemon Chiffon (Very Light Yellow)
+    (147, 112, 219), # Medium Purple
+    (0, 255, 127),   # Spring Green
+    (210, 105, 30),  # Chocolate
+]
+NUM_CUSTOM_COLORS = len(CUSTOM_DISTINCT_COLORS_RGB)
 
 def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize=5):
     """
@@ -250,9 +295,9 @@ def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize
     # === Block 8: Visualization with Color Key ===
     # Generate the output figure displaying intermediate steps and the final result with area analysis.
     # === Block 8: Visualization with Color Key and Two Columns ===
-    print("Generating final visualization with color key and two columns...")
+    print("Generating final visualization with custom distinct color key...")
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Tissue Segmentation (Manual - Divide & Conquer)', fontsize=16)
+    fig.suptitle('Tissue Segmentation (Manual - Custom Colors)', fontsize=16) # Title Updated
     ax = axes.ravel()
 
     # Plot 1: Original Image
@@ -261,103 +306,103 @@ def run_manual_watershed(color_image, min_area_threshold, markers_df, blur_ksize
     ax[0].axis('off')
 
     # Plot 2: Identified Major Components
-    ax[1].imshow(binary_mask, cmap='nipy_spectral')
-    ax[1].set_title("2. Binary Mask")
+    ax[1].imshow(main_components, cmap='nipy_spectral') # Keep spectral here, just identifies regions
+    ax[1].set_title("2. Major Components Identified")
     ax[1].axis('off')
 
-    # Plot 3: Final Segmented and Filtered Image
+    # --- Plot 3: Final Segmented Image (CUSTOM Distinct Colors) ---
     num_final_labels = len(valid_labels)
-    # Define o colormap aqui para usar em ambos os plots
-    cmap = plt.cm.nipy_spectral 
+    # Create an empty RGB image (black background)
+    colored_segmentation_rgb = np.zeros((image_size[0], image_size[1], 3), dtype=np.uint8)
+    # Dictionary to store the mapping: label -> color
+    color_map_dict = {}
 
     if num_final_labels > 0:
-        min_label = min(valid_labels)
-        max_label = max(valid_labels)
-        
-        # --- AJUSTE NA NORMALIZAÇÃO ---
-        # Define vmin ligeiramente abaixo do mínimo real para evitar preto/cor muito escura para o label 1
-        # Lida com caso de label único
-        if min_label == max_label:
-            # Se só tem um label, centraliza ele no colormap
-            norm = plt.Normalize(vmin=min_label - 1, vmax=max_label + 1) 
-        else:
-            # Desloca o início ligeiramente
-            norm = plt.Normalize(vmin=min_label - 0.5, vmax=max_label) 
-        # --- FIM DO AJUSTE ---
-            
-        colored_segmentation = cmap(norm(output_image_for_display))
-        colored_segmentation[output_image_for_display == 0] = [0, 0, 0, 1] # Garante fundo preto
-        ax[2].imshow(colored_segmentation)
+        print(f"Mapping {num_final_labels} labels to {NUM_CUSTOM_COLORS} custom colors (cycling)...")
+
+        # Assign colors to each valid label using the custom list
+        for i, label in enumerate(valid_labels):
+            # Cycle through the custom color list
+            color_index = i % NUM_CUSTOM_COLORS
+            # Get the RGB color tuple (0-255)
+            rgb_color = CUSTOM_DISTINCT_COLORS_RGB[color_index]
+
+            # Store in dictionary
+            color_map_dict[label] = np.array(rgb_color) # Store as numpy array
+
+            # Apply color to the corresponding pixels in the RGB image
+            colored_segmentation_rgb[output_image_for_display == label] = rgb_color
+
+        ax[2].imshow(colored_segmentation_rgb)
     else:
+        # Show black image if no components remain
         ax[2].imshow(output_image_for_display, cmap='gray')
 
-    ax[2].set_title("3. Final Filtered Segmentation")
+    ax[2].set_title("3. Final Segmentation (Custom Colors)") # Title Updated
     ax[2].axis('off')
 
-    # Plot 4: Area Analysis Text with Color Key (Two Columns)
+    # --- Plot 4: Area Analysis Text with CUSTOM Distinct Color Key (Two Columns) ---
     ax[3].axis('off')
     ax[3].set_title("4. Final Area Analysis (with Color Key)")
     ax[3].set_ylim(0, 1)
     ax[3].set_xlim(0, 1)
 
     if component_areas and num_final_labels > 0:
-        # Usa EXATAMENTE a mesma normalização e colormap do Plot 3
-        cmap_func = cmap # Usa a variável cmap definida acima
-        norm_func = norm # Usa a variável norm definida acima
-
         sorted_labels = sorted(component_areas.keys())
-        
-        # --- Lógica para Duas Colunas (Inalterada) ---
-        mid_point = len(sorted_labels) // 2 + (len(sorted_labels) % 2) 
+
+        # --- Logic for Two Columns ---
+        mid_point = len(sorted_labels) // 2 + (len(sorted_labels) % 2)
         items_col1 = sorted_labels[:mid_point]
         items_col2 = sorted_labels[mid_point:]
 
         y_pos_start = 0.95
-        y_step = 0.045 
+        y_step = 0.045 # Adjust vertical spacing if needed
         color_box_size = 0.04
-        
-        # Coluna 1
+
+        # Column 1
         x_pos_color1 = 0.05
         x_pos_text1 = 0.12
         current_y = y_pos_start
         for label in items_col1:
             area = component_areas[label]
-            # Obtém a cor USANDO A MESMA NORMA AJUSTADA
-            color_val = cmap_func(norm_func(label)) 
+            # Get color from the CUSTOM dictionary (divide by 255.0 for patch)
+            rgb_color_0_255 = color_map_dict.get(label, np.array([0,0,0]))
+            color_val_0_1 = rgb_color_0_255 / 255.0
             rect = patches.Rectangle((x_pos_color1, current_y - color_box_size),
-                                     color_box_size, color_box_size, facecolor=color_val)
+                                     color_box_size, color_box_size, facecolor=color_val_0_1)
             ax[3].add_patch(rect)
             text = f"Comp {label}: {area} px"
             ax[3].text(x_pos_text1, current_y - color_box_size/2, text,
                        fontsize=14, fontfamily='monospace', verticalalignment='center')
             current_y -= y_step
-            if current_y < 0.15: break 
 
-        # Coluna 2
-        x_pos_color2 = 0.55 
-        x_pos_text2 = 0.62  
-        current_y = y_pos_start 
+        # Column 2
+        x_pos_color2 = 0.55
+        x_pos_text2 = 0.62
+        current_y = y_pos_start # Reset Y
         for label in items_col2:
             area = component_areas[label]
-            # Obtém a cor USANDO A MESMA NORMA AJUSTADA
-            color_val = cmap_func(norm_func(label)) 
+            # Get color from the CUSTOM dictionary (divide by 255.0 for patch)
+            rgb_color_0_255 = color_map_dict.get(label, np.array([0,0,0]))
+            color_val_0_1 = rgb_color_0_255 / 255.0
             rect = patches.Rectangle((x_pos_color2, current_y - color_box_size),
-                                     color_box_size, color_box_size, facecolor=color_val)
+                                     color_box_size, color_box_size, facecolor=color_val_0_1)
             ax[3].add_patch(rect)
             text = f"Comp {label}: {area} px"
             ax[3].text(x_pos_text2, current_y - color_box_size/2, text,
                        fontsize=14, fontfamily='monospace', verticalalignment='center')
             current_y -= y_step
-            if current_y < 0.15: break 
-        # --- Fim da Lógica para Duas Colunas ---
+        # --- End of Two Column Logic ---
 
-        # Adiciona a área total (Inalterado)
+        # Display Total Area
         total_area_str = f"Total Segmented Area: {total_tissue_area} pixels"
         ax[3].text(0.5, 0.05, total_area_str, fontsize=12, fontweight='bold', ha='center', verticalalignment='bottom')
 
     else:
+        # Message if no components remain
         ax[3].text(0.5, 0.5, "No components found\nafter filtering.", ha='center', va='center', fontsize=12)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
+    # Return the figure and the final segmented mask
     return fig, output_image_for_display

@@ -4,6 +4,7 @@ import higra as hg
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches # Import patches for color key
+from PIL import Image
 from matplotlib import colormaps
 from skimage import io, color, measure
 from skimage.filters import threshold_otsu # We still need this for the default case
@@ -60,9 +61,9 @@ NUM_CUSTOM_COLORS = len(CUSTOM_DISTINCT_COLORS_RGB)
 
 # Removed blur_ksize and min_peak_dist parameters as they are not used in this version
 #
-# !!! --- MODIFICATION 1: Added 'manual_threshold=None' --- !!!
+# !!! --- MODIFICATION 1: Added 'global_threshold=None' --- !!!
 #
-def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=None, watershed_method='skimage'):
+def run_automatic_watershed(color_image, min_area_threshold, global_threshold=None, watershed_method='skimage'):
     """
     Performs automatic seeded watershed segmentation using sure foreground/background markers.
 
@@ -70,7 +71,7 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
         color_image (np.ndarray): The input color image (RGB).
         min_area_threshold (int): Minimum area threshold for identifying main components
                                       and for final component filtering.
-        manual_threshold (float, optional): A user-defined threshold (0.0-1.0). 
+        global_threshold (float, optional): A user-defined threshold (0.0-1.0). 
                                             If None, Otsu's method is used.
 
     Returns:
@@ -79,8 +80,15 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
 
     # === Block 1: Initial Image Conversion ===
     # Convert input image to grayscale for processing.
-    gray_image = color.rgb2gray(color_image)
-    image_size = gray_image.shape
+    image_rgb = np.array(color_image)
+    print("Format of input image:", image_rgb.shape, image_rgb.dtype) # Verbose
+    R = image_rgb[:, :, 0]
+    G = image_rgb[:, :, 1]
+    B = image_rgb[:, :, 2]
+    array_grayscale = 0.2989 * R + 0.5870 * G + 0.1140 * B
+    array_grayscale8bit = array_grayscale.astype(np.uint8)
+    img_grayscale = Image.fromarray(array_grayscale8bit)
+    image_size = array_grayscale8bit.shape
     # print(f"Image loaded. Size: {image_size}") # Verbose
 
     # === Block 2: HIGRA Graph and Edge Weight Setup ===
@@ -89,22 +97,22 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
     graph = hg.get_4_adjacency_graph(image_size)
     # Calculate edge weights based on L1 difference on the ORIGINAL grayscale image.
     # print("Calculating edge weights on original image...") # Verbose
-    edge_weights = hg.weight_graph(graph, gray_image, hg.WeightFunction.L1)
+    edge_weights = hg.weight_graph(graph, array_grayscale8bit, hg.WeightFunction.L1)
 
     # === Block 3: Pre-processing - Create Initial Binary Mask ===
     # Separate potential foreground (tissue) from background.
     
-    if manual_threshold is not None:
-        threshold_value = manual_threshold
-        print(f"--- Using MANUAL threshold: {threshold_value} ---")
+    if global_threshold is not None:
+        threshold_value = global_threshold * 255.0
+        print(f"--- Using GLOBAL threshold: {threshold_value} ---")
     else:
         # Otherwise, calculate using Otsu's method
-        threshold_value = threshold_otsu(gray_image)
+        threshold_value = threshold_otsu(array_grayscale8bit)
         print(f"--- Using AUTOMATIC (Otsu) threshold: {threshold_value} ---")
         
     # Pixels LESS than the threshold are foreground (dark objects)
     # This is what you want: dark purple (low value) < threshold
-    binary_mask = gray_image < threshold_value
+    binary_mask = array_grayscale < threshold_value
     
     # Apply morphological opening to remove small noise from the initial mask.
     selem = disk(1) # Small structuring element for noise removal
@@ -133,7 +141,7 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
     # print(f"Found {num_fg_labels} foreground markers.") # Verbose
 
     # Combine markers: Background = 1, Foreground = 2, 3, ...
-    final_markers = np.zeros(gray_image.shape, dtype=np.int32)
+    final_markers = np.zeros(array_grayscale8bit.shape, dtype=np.int32)
     final_markers[sure_background] = 1
     # Add foreground labels, offsetting them by 1.
     final_markers[foreground_labels > 0] = foreground_labels[foreground_labels > 0] + 1
@@ -144,7 +152,7 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
     # and the automatically generated combined markers.
     # print("Executing seeded watershed...") # Verbose
     if(watershed_method == 'skimage'):
-        final_partition = watershed(gray_image, markers=final_markers, mask=binary_filtered_mask)
+        final_partition = watershed(array_grayscale8bit, markers=final_markers, mask=binary_filtered_mask)
     else:
         final_partition = hg.watershed.labelisation_seeded_watershed(graph, edge_weights, final_markers)
     # Convert result to a standard NumPy array if necessary.
@@ -189,7 +197,66 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
             valid_labels.append(label)
     # print("Final calculated areas:", component_areas) # Verbose
 
-    # === Block 9: Visualization with Color Key ===
+    # === Block 9: Save all phases of the image processing ===
+    output_images = {
+        "Original Image": color_image,
+        "Grayscale Image": img_grayscale,
+        "Initial Binary Mask": binary_mask,
+        "Opened Mask": opened_mask,
+        "Labeled Initial Mask": labeled_mask,
+        "Filtered Labels": filtered_mask_labels,
+        "Filtered Initial Mask": binary_filtered_mask,
+        "Sure Foreground": sure_foreground,
+        "Dilated Foreground": dilated_foreground,
+        "Sure Background": sure_background,
+        "Final Markers": final_markers,
+        "Final Partition": final_partition,
+        "Final Segmented Image": output_image_for_display
+    }
+    i = 0
+    for name, img in output_images.items():
+        i += 1
+        filename = f"output/{i}_{name.replace(' ', '_').lower()}.png"
+        try:
+            if name == "Original Image" or name == "Grayscale Image":
+                arr_final = np.array(img)
+            elif name == "Final Markers" or name == "Final Partition" or name == "Final Segmented Image":
+                arr_final = np.array(img).astype(np.uint16) 
+            else:
+                arr_final = np.array(img).astype(np.uint8) * 255                
+
+            if arr_final is not None:
+                arr_final_cont = np.ascontiguousarray(arr_final)
+                io.imsave(filename, arr_final_cont)
+        except Exception as e:
+            print(f"Error saving {name} image: {e}")
+            print(f"--------------------------------------------------")
+            print(f"Type: {type(img)}, dtype: {img.dtype if hasattr(img, 'dtype') else 'N/A'}, shape: {img.shape if hasattr(img, 'shape') else 'N/A'}")
+
+    # Save the grayscale image with .pgm ASCII format
+    # to comply with the request for PGM format.
+    pgm_grayscale = array_grayscale8bit
+    if pgm_grayscale.ndim == 3:
+        H, W, C = pgm_grayscale.shape
+        pgm_grayscale = pgm_grayscale.reshape((H, W))
+    else:
+        H, W = pgm_grayscale.shape
+        
+    max_val = 255
+    filename = "output/grayscale_image.pgm"
+    
+    try:
+        with open(filename, 'w') as f:
+            f.write("P2\n")
+            f.write(f"{W} {H}\n")
+            f.write(f"{max_val}\n")
+            np.savetxt(f, pgm_grayscale, fmt='%d')
+    except Exception as e:
+        print(f"Error saving PGM file: {e}")
+
+
+
+    # === Block 10: Visualization with Color Key ===
     # Generate the output figure including the color key legend.
     print("Generating final visualization with custom distinct color key...")
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
@@ -262,7 +329,7 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
             rect = patches.Rectangle((x_pos_color1, current_y - color_box_size),
                                      color_box_size, color_box_size, facecolor=color_val_0_1)
             ax[3].add_patch(rect)
-            text = f"Label {label}: {area} px" # Using "Label" for automatic mode
+            text = f"Label {label-1}: {area} px" # Using "Label" for automatic mode
             ax[3].text(x_pos_text1, current_y - color_box_size/2, text,
                        fontsize=14, fontfamily='monospace', verticalalignment='center')
             current_y -= y_step
@@ -279,7 +346,7 @@ def run_automatic_watershed(color_image, min_area_threshold, manual_threshold=No
             rect = patches.Rectangle((x_pos_color2, current_y - color_box_size),
                                      color_box_size, color_box_size, facecolor=color_val_0_1)
             ax[3].add_patch(rect)
-            text = f"Label {label}: {area} px" # Using "Label"
+            text = f"Label {label-1}: {area} px" # Using "Label"
             ax[3].text(x_pos_text2, current_y - color_box_size/2, text,
                        fontsize=14, fontfamily='monospace', verticalalignment='center')
             current_y -= y_step

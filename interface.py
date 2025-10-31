@@ -21,7 +21,7 @@ except ModuleNotFoundError:
     st.error("Error: Ensure 'automatic_watershed.py' and 'manual_watershed.py' are in the 'watershed' subfolder and it contains an '__init__.py' file.")
     st.stop()
 except ImportError as e:
-    st.error(f"Erro ao importar 'run_automatic_watershed'. A sua função foi atualizada para aceitar 'manual_threshold'? Erro: {e}")
+    st.error(f"Erro ao importar 'run_automatic_watershed'. A sua função foi atualizada para aceitar 'global_threshold'? Erro: {e}")
     st.stop()
 
 
@@ -170,7 +170,7 @@ with tab_process:
                     fig_auto, mask_auto = run_automatic_watershed(
                         color_image, 
                         current_min_area, 
-                        manual_threshold=threshold_to_pass,
+                        global_threshold=threshold_to_pass,
                         watershed_method=ws_lib
                     )
                     st.pyplot(fig_auto) # Display the resulting matplotlib figure

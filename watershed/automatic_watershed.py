@@ -7,8 +7,8 @@ import matplotlib.patches as patches # Import patches for color key
 from PIL import Image
 from matplotlib import colormaps
 from skimage import io, color, measure
-from skimage.filters import threshold_otsu # We still need this for the default case
-from skimage.morphology import opening, closing, dilation, disk, remove_small_objects # Added remove_small_objects
+from skimage.filters import threshold_otsu, threshold_local # We still need this for the default case
+from skimage.morphology import opening, erosion, dilation, disk, remove_small_objects, reconstruction # Added remove_small_objects
 # from skimage.measure import regionprops # regionprops not needed anymore
 from skimage.segmentation import watershed
 from scipy.ndimage import binary_fill_holes
@@ -102,21 +102,32 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
     # === Block 3: Pre-processing - Create Initial Binary Mask ===
     # Separate potential foreground (tissue) from background.
     
-    if global_threshold is not None:
-        threshold_value = global_threshold * 255.0
-        print(f"--- Using GLOBAL threshold: {threshold_value} ---")
-    else:
-        # Otherwise, calculate using Otsu's method
-        threshold_value = threshold_otsu(array_grayscale8bit)
-        print(f"--- Using AUTOMATIC (Otsu) threshold: {threshold_value} ---")
+    # if global_threshold is not None:
+    #     threshold_value = global_threshold * 255.0
+    #     print(f"--- Using GLOBAL threshold: {threshold_value} ---")
+    #     binary_mask = array_grayscale8bit < threshold_value
+    # else:
+    #     block_size = 51 # Smaller block size for local thresholding
+    #     local_thresh = threshold_local(array_grayscale8bit, block_size, method='mean')
+    #     binary_mask = array_grayscale8bit < local_thresh
+    #     threshold_value = np.mean(local_thresh)
+    
+    global_threshold_value = threshold_otsu(array_grayscale8bit) if global_threshold is None else global_threshold * 255.0
+    global_mask = array_grayscale8bit < global_threshold_value
+    
+    block_size = 51
+    local_thresh = threshold_local(array_grayscale8bit, block_size, method='mean')
+    local_mask = array_grayscale8bit < local_thresh
+    
+    binary_mask = global_mask & local_mask
         
     # Pixels LESS than the threshold are foreground (dark objects)
     # This is what you want: dark purple (low value) < threshold
-    binary_mask = array_grayscale < threshold_value
     
     # Apply morphological opening to remove small noise from the initial mask.
-    selem = disk(1) # Small structuring element for noise removal
-    opened_mask = opening(binary_mask, selem)
+    selem = disk(5) # Small structuring element for noise removal
+    marker = erosion(binary_mask, selem)
+    opened_mask = reconstruction(marker, binary_mask, method='dilation')
 
     # === Block 4: Filtering - Remove Small Objects ===
     # Label connected components in the opened mask.
@@ -221,7 +232,37 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
             if name == "Original Image" or name == "Grayscale Image":
                 arr_final = np.array(img)
             elif name == "Final Markers" or name == "Final Partition" or name == "Final Segmented Image":
-                arr_final = np.array(img).astype(np.uint16) 
+                # Convert marker/label images to an RGB visualization before saving to avoid very dark/black outputs.
+                # Try to obtain a numpy label image; handle Higra partition objects if present.
+                try:
+                    arr = np.array(img)
+                except Exception:
+                    arr = img
+
+                # If the object has a to_label_image method (Higra partition), use it to get a label image
+                if not isinstance(arr, np.ndarray) and hasattr(img, 'to_label_image'):
+                    try:
+                        arr = img.to_label_image(image_size)
+                    except Exception:
+                        pass
+
+                if isinstance(arr, np.ndarray):
+                    # If boolean mask, convert to 0/255 uint8
+                    if arr.dtype == bool:
+                        arr_final = (arr.astype(np.uint8) * 255)
+                    else:
+                        # Ensure integer label array
+                        try:
+                            labels_arr = arr.astype(np.int32)
+                            # Use skimage.color.label2rgb to create an RGB visualization (floats 0-1), then scale to 0-255
+                            arr_vis = (color.label2rgb(labels_arr, bg_label=0) * 255.0).astype(np.uint8)
+                            arr_final = arr_vis
+                        except Exception:
+                            # Fallback: save raw numeric array as uint16
+                            arr_final = arr.astype(np.uint16)
+                else:
+                    # Last resort: try to save as uint16 representation
+                    arr_final = np.array(img).astype(np.uint16)
             else:
                 arr_final = np.array(img).astype(np.uint8) * 255                
 
@@ -271,7 +312,7 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
     # Plot 2: Cleaned Foreground Mask
     # We plot 'opened_mask' now to see the direct result of the thresholding
     ax[1].imshow(opened_mask, cmap='gray')
-    ax[1].set_title(f"2. Binary Mask (Thresh={threshold_value:.3f})")
+    ax[1].set_title(f"2. Binary Mask (Thresh={global_threshold_value:.3f})")
     ax[1].axis('off')
 
     # --- Plot 3: Final Segmented Image (CUSTOM Distinct Colors) ---

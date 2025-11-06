@@ -125,9 +125,11 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
     # This is what you want: dark purple (low value) < threshold
     
     # Apply morphological opening to remove small noise from the initial mask.
-    selem = disk(5) # Small structuring element for noise removal
-    marker = erosion(binary_mask, selem)
-    opened_mask = reconstruction(marker, binary_mask, method='dilation')
+    # selem = disk(5) # Small structuring element for noise removal
+    # marker = erosion(binary_mask, selem)
+    # opened_mask = reconstruction(marker, binary_mask, method='dilation')
+    selem = disk(1)
+    opened_mask = opening(binary_mask, selem)
 
     # === Block 4: Filtering - Remove Small Objects ===
     # Label connected components in the opened mask.
@@ -148,7 +150,7 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
     dilated_foreground = dilation(sure_foreground, selem) # Use the same small selem
     sure_background = (dilated_foreground == 0)
     # Label the sure foreground regions to create initial seeds (labels 1, 2, ...).
-    foreground_labels, num_fg_labels = measure.label(sure_foreground, return_num=True)
+    foreground_labels = measure.label(sure_foreground)
     # print(f"Found {num_fg_labels} foreground markers.") # Verbose
 
     # Combine markers: Background = 1, Foreground = 2, 3, ...
@@ -175,7 +177,7 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
     output_image_for_display[output_image_for_display == 1] = 0
     # print("Final labels after watershed (BG removed):", np.unique(output_image_for_display)) # Verbose
 
-    # === Block 7: Post-processing - Remove Small Components ===
+    # === Block 7: Post-processing - Remove Small Noises ===
     post_processed_filled = np.copy(output_image_for_display)
     component_labels = np.unique(output_image_for_display)
     if len(component_labels) > 0 and component_labels[0] == 0: component_labels = component_labels[1:] # Exclude background
@@ -254,9 +256,18 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
                         # Ensure integer label array
                         try:
                             labels_arr = arr.astype(np.int32)
-                            # Use skimage.color.label2rgb to create an RGB visualization (floats 0-1), then scale to 0-255
-                            arr_vis = (color.label2rgb(labels_arr, bg_label=0) * 255.0).astype(np.uint8)
-                            arr_final = arr_vis
+                            unique_labels_in_image = np.unique(labels_arr)
+                            valid_labels_in_image = unique_labels_in_image[unique_labels_in_image != 0]
+                            num_labels_in_image = len(valid_labels_in_image)
+                            colored_image_rgb = np.zeros((labels_arr.shape[0], labels_arr.shape[1], 3), dtype=np.uint8)
+                            
+                            if num_labels_in_image > 0:
+                                print(f"Mapping {num_labels_in_image} labels to {NUM_CUSTOM_COLORS} custom colors for saving...")
+                                for i_label, label in enumerate(valid_labels_in_image):
+                                    color_index = i_label % NUM_CUSTOM_COLORS
+                                    rgb_color = CUSTOM_DISTINCT_COLORS_RGB[color_index]
+                                    colored_image_rgb[labels_arr == label] = rgb_color
+                            arr_final = colored_image_rgb
                         except Exception:
                             # Fallback: save raw numeric array as uint16
                             arr_final = arr.astype(np.uint16)

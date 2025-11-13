@@ -65,7 +65,7 @@ def get_markers_by_extinction(gray_image, mode="Volume", num_markers=None):
 
     Args:
         gray_image (np.ndarray): The input grayscale image.
-        mode (str): The extinction mode ('Volume', 'Are', 'Dynamics').
+        mode (str): The extinction mode ('Volume', 'Area', 'Dynamics').
         num_markers (int, optional): Number of markers to retain. If None, all markers are kept."""
         
     # 1. Invert grayscale image for Higra processing, to get dark regions as light peaks to work with a Max-Tree.

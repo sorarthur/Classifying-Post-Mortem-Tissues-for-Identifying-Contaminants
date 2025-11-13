@@ -59,10 +59,61 @@ CUSTOM_DISTINCT_COLORS_RGB = [
 ]
 NUM_CUSTOM_COLORS = len(CUSTOM_DISTINCT_COLORS_RGB)
 
-# Removed blur_ksize and min_peak_dist parameters as they are not used in this version
-#
-# !!! --- MODIFICATION 1: Added 'global_threshold=None' --- !!!
-#
+def get_markers_by_extinction(gray_image, mode="Volume", num_markers=None):
+    """
+    Generates markers for watershed segmentation using extinction-based filtering.
+
+    Args:
+        gray_image (np.ndarray): The input grayscale image.
+        mode (str): The extinction mode ('Volume', 'Are', 'Dynamics').
+        num_markers (int, optional): Number of markers to retain. If None, all markers are kept."""
+        
+    # 1. Invert grayscale image for Higra processing, to get dark regions as light peaks to work with a Max-Tree.
+    inverted_image = 255 - gray_image
+    inverted_image = inverted_image.astype(np.float64)
+    
+    # 2. Create the graph and the max-tree representation of the image grid.
+    graph = hg.get_4_adjacency_graph(gray_image.shape)
+    
+    tree, altitudes = hg.component_tree.component_tree_max_tree(graph, inverted_image)
+    
+    # 3. Compute the base attribute for extinction based on the selected mode.
+    if mode == "Volume":
+        atrr_value = hg.attribute_volume(tree, altitudes)
+    elif mode == "Area":
+        attr_value = hg.attribute_area(tree)
+    elif mode == "Dynamics":
+        attr_value = hg.attribute_dynamics(tree, altitudes)
+    else:
+        raise ValueError("Invalid mode for extinction. Choose from 'Volume', 'Area', 'Dynamics'.")
+    
+    # 4. Compute extinction values.
+    extinction_values = hg.attribute_extinction_value(tree, altitudes, attr_value)
+    
+    # 5. Find the markers based on extinction values.
+    leaf_nodes = tree.leaves()
+    extinction_on_leaves = extinction_values[leaf_nodes]
+    
+    sorted_index = np.argsort(extinction_on_leaves)[::-1]  # Descending order
+    
+    if num_markers is None:
+        thresh = extinction_on_leaves.max() * 0.01
+        np_markers = np.sum(extinction_on_leaves > thresh)
+    else:
+        np_markers = num_markers
+        
+    top_relative_indexes = sorted_index[:np_markers]
+    
+    leaf_labels = np.zeros(leaf_nodes.size, dtype=np.int32)
+    
+    for label_idx, relative_idx in enumerate(top_relative_indexes):
+        leaf_labels[relative_idx] = label_idx + 1  # Labels start from 1
+        
+    markers = hg.reconstruct_leaf_data(tree, leaf_labels)
+    
+    return markers
+    
+    
 def run_automatic_watershed(color_image, min_area_threshold, global_threshold=None, watershed_method='skimage'):
     """
     Performs automatic seeded watershed segmentation using sure foreground/background markers.

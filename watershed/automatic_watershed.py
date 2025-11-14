@@ -9,8 +9,6 @@ from matplotlib import colormaps
 from skimage import io, color, measure
 from skimage.filters import threshold_otsu, threshold_local # We still need this for the default case
 from skimage.morphology import opening, erosion, dilation, disk, remove_small_objects, reconstruction # Added remove_small_objects
-# from skimage.measure import regionprops # regionprops not needed anymore
-from skimage.segmentation import watershed
 from scipy.ndimage import binary_fill_holes
 from scipy import ndimage as ndi # Keep ndi import if needed elsewhere, though distance transform is removed
 # from skimage.feature import peak_local_max # peak_local_max removed
@@ -65,7 +63,7 @@ def get_markers_by_extinction(gray_image, mode="Volume", num_markers=None):
 
     Args:
         gray_image (np.ndarray): The input grayscale image.
-        mode (str): The extinction mode ('Volume', 'Are', 'Dynamics').
+        mode (str): The extinction mode ('Volume', 'Area', 'Dynamics').
         num_markers (int, optional): Number of markers to retain. If None, all markers are kept."""
         
     # 1. Invert grayscale image for Higra processing, to get dark regions as light peaks to work with a Max-Tree.
@@ -114,7 +112,7 @@ def get_markers_by_extinction(gray_image, mode="Volume", num_markers=None):
     return markers
     
     
-def run_automatic_watershed(color_image, min_area_threshold, global_threshold=None, watershed_method='skimage'):
+def run_automatic_watershed(color_image, min_area_threshold, global_threshold=None):
     """
     Performs automatic seeded watershed segmentation using sure foreground/background markers.
 
@@ -215,10 +213,8 @@ def run_automatic_watershed(color_image, min_area_threshold, global_threshold=No
     # Execute Higra's seeded watershed using the graph, edge weights (from original gray),
     # and the automatically generated combined markers.
     # print("Executing seeded watershed...") # Verbose
-    if(watershed_method == 'skimage'):
-        final_partition = watershed(array_grayscale8bit, markers=final_markers, mask=binary_filtered_mask)
-    else:
-        final_partition = hg.watershed.labelisation_seeded_watershed(graph, edge_weights, final_markers)
+
+    final_partition = hg.watershed.labelisation_seeded_watershed(graph, edge_weights, final_markers)
     # Convert result to a standard NumPy array if necessary.
     if hasattr(final_partition, 'to_label_image'):
         output_image_for_display = final_partition.to_label_image(image_size)

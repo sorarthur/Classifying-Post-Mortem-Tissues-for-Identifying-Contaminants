@@ -1,0 +1,10 @@
+streamlit
+numpy
+Pillow
+pandas
+streamlit-drawable-canvas
+opencv-python
+higra
+matplotlib
+scikit-image
+scipy

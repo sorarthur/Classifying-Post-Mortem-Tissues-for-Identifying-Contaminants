@@ -66,36 +66,44 @@ processing_method = st.sidebar.selectbox(
 # Conditional sliders shown only if a Watershed method is selected.
 min_area = 180 # Default value
 blur_kernel_size = 5 # Default value
-
 use_manual_thresh = False
 manual_thresh_val = 0.5 
 
-if "Watershed" in processing_method:
-    min_area = st.sidebar.slider("Minimum Component Area (px²)", 50, 5000, 180, 10, key="ws_min_area")
-    
-    # O Blur só é usado no Manual, mas podemos deixar aqui ou mover para dentro do 'if manual'
-    blur_kernel_size = st.sidebar.slider("Gaussian Smoothing (Kernel)", 1, 21, 5, 2, key="ws_blur_ksize", help="Controls blur intensity before watershed. Increase if flooding stops early.")
+st.sidebar.markdown("---")
 
-    # Apenas mostrar controles de threshold para o método Automático
-    if processing_method == "Automatic Watershed":
-        st.sidebar.markdown("---") # Separator
-        st.sidebar.subheader("Thresholding (Auto Watershed)")
-        use_manual_thresh = st.sidebar.checkbox(
-            "Set Manual Threshold", 
-            value=False, 
-            key="ws_use_manual_thresh",
-            help="If unchecked, the automatic (Otsu) threshold will be used."
-        )
-        
-        if use_manual_thresh:
-            manual_thresh_val = st.sidebar.slider(
-                "Manual Threshold Value", 
-                0.0, 1.0, 0.5, 0.01, 
-                key="ws_manual_thresh_val",
-                help="0.0 = Black, 1.0 = White. Pixels *darker* than this value are kept."
-            )
+st.sidebar.subheader("📈 Connected Filtering")
+# 1. Volume
+volume_attr = st.sidebar.number_input(
+    "Volume minimal value",
+    min_value=0,
+    max_value=4000000,
+    value=39200,
+    step=50,
+    help="Volume minimal value. 0 = do not resize.",
+    key="vol_min_value"
+)
 
+# 2. Area
+area_attr = st.sidebar.number_input(
+    "Area minimal value",
+    min_value=0,
+    max_value=5000,
+    value=1500,
+    step=50,
+    help="Area minimal value. 0 = do not resize.",
+    key="area_min_value"
+)
 
+# 3. Dynamics
+dynamics_attr = st.sidebar.number_input(
+    "Dynamics minimal value (Minimal Luminance)",
+    min_value=0,
+    max_value=255,
+    value=62,
+    step=1, 
+    help="Luminance difference minimal value.",
+    key="dynamics_min_value"
+)
 st.sidebar.markdown("---")
 
 # --- Validation Controls ---
@@ -156,8 +164,9 @@ with tab_process:
                     
                     fig_auto, mask_auto = run_automatic_watershed(
                         color_image, 
-                        current_min_area, 
-                        global_threshold=threshold_to_pass
+                        vol_min_area=volume_attr, 
+                        area_min_area=area_attr,
+                        dynamics_min_area=dynamics_attr
                     )
                     st.pyplot(fig_auto) # Display the resulting matplotlib figure
 
